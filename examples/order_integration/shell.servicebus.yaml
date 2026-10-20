@@ -1,0 +1,22 @@
+# Cloud flavour: Azure Service Bus + Application Insights (+ managed Prometheus scraping /metrics).
+name: order-integration
+features:
+  persistence.sqlite: {path: "${DnA Workflows_DB:-/data/DnA Workflows.db}"}
+  runtime: {definitions: [./workflows], host_id: "${HOSTNAME:-DnA Workflows-1}"}
+  resilience: {}
+  messaging:
+    endpoints:
+      orders: {transport: servicebus, address: orders, consume: true}
+      confirmations: {transport: servicebus, address: order-events, options: {topic: true}}
+  messaging.servicebus:
+    connection_string: "${SERVICEBUS_CONNECTION}"
+    probe_entity: orders
+  http:
+    dependencies:
+      erp: {base_url: "${ERP_URL}", health_url: "${ERP_URL}/health"}
+  observability: {}
+  observability.prometheus: {}
+  # Azure Monitor through the OpenTelemetry Collector (deploy/otel-collector.azure.yaml), see Q-005.
+  # Alternative for simple deployments: observability.azure_monitor with a connection string (in-process).
+  observability.otel: {service_name: order-integration, otlp_endpoint: "${OTLP_ENDPOINT:-http://otel-collector:4318}"}
+  api: {port: 8080, api_key: "${DnA Workflows_API_KEY}"}

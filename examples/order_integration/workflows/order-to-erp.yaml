@@ -1,0 +1,44 @@
+# Order → ERP → confirmation.
+# Broker-neutral: "orders" and "confirmations" are LOGICAL endpoints bound to RabbitMQ, Service Bus
+# or the in-memory broker purely by the shell configuration.
+id: order-to-erp
+version: 1
+name: Book incoming orders in the ERP and confirm them
+forecast:
+  features:
+    lines: {path: data.lines, transform: count}     # more order lines → longer booking
+nodes:
+  receive:
+    id: receive
+    type: MessageReceived
+    inputs: {endpoint: orders, type: order.placed}
+    ui: {position: {x: 40, y: 80}}
+  book:
+    id: book
+    type: HttpRequest
+    inputs:
+      method: POST
+      dependency: erp            # → dependency key "http:erp": retries, holds and probes apply here
+      path: /orders
+      json_body: {$output: receive.data}
+    estimate: {optimistic: 1, likely: 3, pessimistic: 20, driver: {feature: lines, per_unit: 0.5}}
+    ui: {position: {x: 300, y: 80}, note: "ERP sometimes slow on Mondays"}
+  confirm:
+    id: confirm
+    type: SendMessage
+    inputs:
+      endpoint: confirmations
+      type: order.confirmed
+      data:
+        order_id: {$output: receive.data.order_id}
+        erp_id: {$output: book.body.erp_id}
+    ui: {position: {x: 560, y: 80}}
+  done:
+    id: done
+    type: SetOutput
+    inputs: {value: {$output: book.body}}
+    ui: {position: {x: 820, y: 80}}
+edges:
+  - {source: receive, target: book}
+  - {source: book, target: confirm}
+  - {source: confirm, target: done}

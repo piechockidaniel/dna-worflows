@@ -1,0 +1,25 @@
+# Everything for trying the Studio locally (development mode: no Keycloak, persona switcher).
+#   cd studio && npm run build   # once
+#   uvicorn fake_erp:app --port 18080 &
+#   python -m DnA Workflows run --config shell.studio.yaml   → http://localhost:8080/studio/
+name: order-integration-studio
+features:
+  persistence.sqlite: {path: "${DnA Workflows_DB:-./DnA Workflows-studio.db}"}
+  runtime: {definitions: [./workflows], timer_interval: 0.2, outbox_interval: 0.2}
+  resilience:
+    retry: {dependency_unavailable: {max_attempts: 3, base_delay: 1, max_delay: 5}}
+    release: {rules: [{pattern: "http:erp", strategy: probe-recommend, options: {successes_required: 2, interval: 2}}]}
+    coordinator_interval: 1
+  messaging:
+    endpoints:
+      orders: {transport: inmemory, address: orders, consume: true}
+      confirmations: {transport: inmemory, address: confirmations}
+  messaging.inmemory: {}
+  http:
+    dependencies:
+      erp: {base_url: "${ERP_URL:-http://localhost:18080}", health_url: "${ERP_URL:-http://localhost:18080}/health"}
+  observability: {sinks: [], export_interval: 0.5}
+  observability.prometheus: {}
+  forecasting: {database: "${DnA Workflows_HISTORY:-./DnA Workflows-history.duckdb}"}
+  authoring: {}
+  api: {port: 8080, studio_dir: "${DnA Workflows_STUDIO:-../../studio/dist}", cors_origins: ["http://localhost:5173"]}

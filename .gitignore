@@ -1,0 +1,39 @@
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.json
+htmlcov/
+*.db
+*.db-shm
+*.db-wal
+
+# Python environments, build output, and tooling caches
+*.py[cod]
+.venv/
+venv/
+/build/
+/dist/
+.mypy_cache/
+.tox/
+.nox/
+.coverage.*
+coverage.xml
+
+# Local configuration (keep shareable templates)
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Frontend dependencies and generated TypeScript metadata
+node_modules/
+*.tsbuildinfo
+
+# Logs, editor settings, and OS metadata
+*.log
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

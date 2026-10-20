@@ -1,0 +1,28 @@
+# On-premise flavour: RabbitMQ + Grafana stack (see ../../deploy/docker-compose.yml).
+name: order-integration
+features:
+  persistence.sqlite: {path: "${DnA Workflows_DB:-/data/DnA Workflows.db}"}
+  runtime: {definitions: [./workflows], host_id: "${HOSTNAME:-DnA Workflows-1}"}
+  resilience:
+    release:
+      rules:
+        - {pattern: "http:erp", strategy: probe-recommend, options: {successes_required: 3, interval: 30}}
+  messaging:
+    endpoints:
+      orders:
+        transport: rabbitmq
+        address: DnA Workflows.orders
+        consume: true
+        options: {exchange: shop, exchange_type: topic, bind_keys: [order.placed], dead_letter_exchange: shop.dlx}
+      confirmations:
+        transport: rabbitmq
+        address: DnA Workflows.confirmations
+        options: {exchange: shop, routing_key: order.confirmed}
+  messaging.rabbitmq: {url: "${RABBITMQ_URL:-amqp://guest:guest@localhost/}"}
+  http:
+    dependencies:
+      erp: {base_url: "${ERP_URL}", health_url: "${ERP_URL}/health", headers: {Authorization: "Bearer ${ERP_TOKEN:-dev}"}}
+  observability: {configure_logging: true}
+  observability.prometheus: {}
+  observability.otel: {service_name: order-integration, otlp_endpoint: "${OTLP_ENDPOINT:-http://localhost:4318}"}
+  api: {port: 8080, api_key: "${DnA Workflows_API_KEY:-}"}

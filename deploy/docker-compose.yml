@@ -1,0 +1,88 @@
+# On-premise / open-source observability path (plan item P4.6, P6.4):
+#   RabbitMQ · DnA Workflows · fake ERP · OpenTelemetry Collector · Tempo · Loki · Prometheus · Grafana
+#
+#   docker compose -f deploy/docker-compose.yml up --build
+#   Studio http://localhost:8080/studio (Keycloak users anna/ben/dora/olga/alice/admin, password = username)
+#   Keycloak http://localhost:8180 (admin/admin) · PostgreSQL localhost:5432
+#   Grafana http://localhost:3000 (anonymous admin) · DnA Workflows API http://localhost:8080/docs
+#   RabbitMQ UI http://localhost:15672 (guest/guest) · toggle the ERP: curl -XPOST localhost:18080/toggle
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    ports: ["5672:5672", "15672:15672"]
+    healthcheck: {test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"], interval: 10s, retries: 10}
+
+  postgres:
+    image: postgres:16
+    environment: {POSTGRES_USER: DnA Workflows, POSTGRES_PASSWORD: DnA Workflows, POSTGRES_DB: DnA Workflows}
+    ports: ["5432:5432"]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U DnA Workflows"], interval: 5s, retries: 20}
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm", "--http-port=8180"]
+    environment: {KC_BOOTSTRAP_ADMIN_USERNAME: admin, KC_BOOTSTRAP_ADMIN_PASSWORD: admin}
+    volumes: ["./keycloak/DnA Workflows-realm.json:/opt/keycloak/data/import/DnA Workflows-realm.json:ro"]
+    ports: ["8180:8180"]
+
+  erp:
+    build: {context: .., dockerfile: deploy/Dockerfile}
+    working_dir: /app/examples/order_integration
+    command: ["python", "-m", "uvicorn", "fake_erp:app", "--host", "0.0.0.0", "--port", "18080"]
+    ports: ["18080:18080"]
+
+  DnA Workflows:
+    build: {context: .., dockerfile: deploy/Dockerfile}
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq/
+      ERP_URL: http://erp:18080
+      OTLP_ENDPOINT: http://otel-collector:4318
+      DnA Workflows_PG: postgresql://DnA Workflows:DnA Workflows@postgres:5432/DnA Workflows
+      KEYCLOAK_ISSUER: http://localhost:8180/realms/DnA Workflows            # what browsers and tokens see
+      KEYCLOAK_JWKS: http://keycloak:8180/realms/DnA Workflows/protocol/openid-connect/certs   # what the server fetches
+      KEYCLOAK_PUBLIC_URL: http://localhost:8180
+      DnA Workflows_HISTORY: /data/history.duckdb
+      HOSTNAME: DnA Workflows-1
+    volumes: ["DnA Workflows-data:/data"]
+    ports: ["8080:8080"]
+    command: ["python", "-m", "DnA Workflows", "run", "--config", "shell.production.yaml"]
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+      keycloak: {condition: service_started}
+      otel-collector: {condition: service_started}
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes: ["./otel-collector.yaml:/etc/otelcol/config.yaml:ro"]
+    ports: ["4318:4318"]
+    depends_on: [tempo, loki]
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes: ["./tempo.yaml:/etc/tempo.yaml:ro"]
+
+  loki:
+    image: grafana/loki:3.2.1
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    volumes: ["./prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    depends_on: [prometheus, tempo, loki]
+
+volumes:
+  DnA Workflows-data:

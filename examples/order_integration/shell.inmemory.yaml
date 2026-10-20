@@ -1,0 +1,26 @@
+# Everything in one process: in-memory broker, SQLite store, API on :8080, Prometheus /metrics.
+name: order-integration
+features:
+  persistence.sqlite: {path: "${DnA Workflows_DB:-./DnA Workflows-demo.db}"}
+  runtime:
+    definitions: [./workflows]
+    timer_interval: 0.2
+    outbox_interval: 0.2
+  resilience:
+    retry:
+      dependency_unavailable: {max_attempts: 3, base_delay: 1, max_delay: 10}
+    release:
+      rules:
+        - {pattern: "http:erp", strategy: probe-auto, options: {successes_required: 2, interval: 2}}
+    coordinator_interval: 1
+  messaging:
+    endpoints:
+      orders: {transport: inmemory, address: orders, consume: true}
+      confirmations: {transport: inmemory, address: confirmations}
+  messaging.inmemory: {}
+  http:
+    dependencies:
+      erp: {base_url: "${ERP_URL:-http://localhost:18080}", health_url: "${ERP_URL:-http://localhost:18080}/health"}
+  observability: {configure_logging: true}
+  observability.prometheus: {}
+  api: {port: 8080}

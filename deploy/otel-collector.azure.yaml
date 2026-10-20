@@ -1,0 +1,21 @@
+# Azure path via the OpenTelemetry Collector (Q-005 / plan item P16.1) – the recommended production setup:
+# DnA Workflows only speaks OTLP (observability.otel.otlp_endpoint), the collector forwards to Azure Monitor.
+# Use the "contrib" collector image (it contains the azuremonitor exporter).
+receivers:
+  otlp:
+    protocols:
+      http: {endpoint: 0.0.0.0:4318}
+      grpc: {endpoint: 0.0.0.0:4317}
+processors:
+  batch: {}
+  memory_limiter: {check_interval: 1s, limit_percentage: 80, spike_limit_percentage: 20}
+  resource:
+    attributes:
+      - {key: deployment.environment, value: "${env:ENVIRONMENT}", action: upsert}
+exporters:
+  azuremonitor:
+    connection_string: "${env:APPLICATIONINSIGHTS_CONNECTION_STRING}"
+service:
+  pipelines:
+    traces: {receivers: [otlp], processors: [memory_limiter, resource, batch], exporters: [azuremonitor]}
+    logs:   {receivers: [otlp], processors: [memory_limiter, resource, batch], exporters: [azuremonitor]}

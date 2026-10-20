@@ -1,0 +1,6 @@
+apiVersion: 1
+providers:
+  - name: DnA Workflows
+    folder: DnA Workflows
+    type: file
+    options: {path: /var/lib/grafana/dashboards}
